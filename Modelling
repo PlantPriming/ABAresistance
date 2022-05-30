@@ -1,0 +1,116 @@
+####Note on DSI ####
+#DSI was used as a way to unify the heterogeneity of disease scoring in our dataset. 
+For example, Achuo et al 2006: quantified disease by “% score frequency for disease categories”, and by “% spreading lesions”.
+All DSI values are compared to the control, if ABA application was applied across 2 genotypes, plants were compared to mock (non ABA) within their genotype. If no ABA treatment was used disease score of ABA mutant plants was compared to that of WT plant values.
+
+#Installing packages##
+
+R (Version 1.4.1717)
+
+if (!require('RColorBrewer')) install.packages('RColorBrewer'); library('RColorBrewer')
+if (!require('rattle')) install.packages('rattle'); library('rattle')
+if (!require('rpart')) install.packages('rpart'); library('rpart')
+if (!require('regclass')) install.packages('regclass'); library('regclass')
+if (!require('caTools')) install.packages('caTools'); library('caTools')
+if (!require('rpart.plot')) install.packages('rpart.plot'); library('rpart.plot')
+if (!require('caret')) install.packages('caret'); library('caret')
+if (!require('dplyr')) install.packages('dplyr'); library('dplyr')
+if (!require('tidyverse')) install.packages('tidyverse'); library('tidyverse')
+if (!require('randomForest')) install.packages('randomForest'); library('randomForest')
+
+
+
+##Random Forest####
+setwd("./Data/Model Data")
+RF1<-read.table("Supp table 3.csv", header = TRUE, sep = ",")
+
+
+set.seed(100)  
+trainingRowIndex <- sample(1:nrow(RF1), 0.70*nrow(RF1))  # row indices for training data
+trainingData <- RF1[trainingRowIndex, ]  # model training data
+testData  <- RF1[-trainingRowIndex, ]   # test data
+
+
+RFmodel1 <- train(
+  Binary ~., data = RF1, method = "rf",ntree = 400,
+  trControl = trainControl("cv", number = 10),
+  importance = TRUE)
+
+RFmodel1$bestTune
+RFmodel1$finalModel
+
+predicted.classes <- RFmodel1 %>% predict(testData)
+head(predicted.classes)
+
+importance(RFmodel1$finalModel)
+varImpPlot(RFmodel1$finalModel, type = 1)
+
+varImp(RFmodel1)
+
+#RF2 (with experimental data included)
+
+RF2<-read.table("Supp table 4.csv", header = TRUE, sep = ",")
+
+RFmodel2 <- train(
+  Binary ~., data = RF2, method = "rf",ntree = 400,
+  trControl = trainControl("cv", number = 10),
+  importance = TRUE)
+
+RFmodel2$finalModel
+varImp(RFmodel2)
+
+
+
+######DECISION TREE 1 ##### 
+
+DT1<-read.table("Supp table 1.csv", header = TRUE, sep = ",")
+DTmodel1 <-rpart(Binary ~ Plant.species + Plant.mutant+ Plant.age..weeks. + Concentration..μm. + Pathogen.type 
++             +  Pathogen.lifestyle + Tissue, data=DT1, method = "class", minsplit = 25)
+fancyRpartPlot(DTmodel1,caption= NULL)
+summarize_tree(DTmodel1)
+
+printcp(DTmodel1)
+plotcp(DTmodel1) 
+DTmodel1$cptable[which.min(DTmodel1$cptable[,"xerror"]),"CP"] #pruning the best tree
+bestcp <- DTmodel1$cptable[which.min(DTmodel1$cptable[,"xerror"]),"CP"]
+DTmodel1.pruned <- prune(DTmodel1, cp = bestcp)
+fancyRpartPlot(DTmodel1.pruned,caption= NULL )
+
+
+
+####Accuracy of DT1 ######
+
+set.seed(100)  # setting seed to reproduce results of random sampling
+sample_splitDT1 <- sample.split(Y = DT1$Binary, SplitRatio = 0.75)
+train_setDT1 <- subset(x = DT1, sample_splitDT1 == TRUE)
+test_setDT1 <- subset(x = DT1, sample_splitDT1 == FALSE)
+
+testDataDT1 = na.omit(test_setDT1)
+trainingDataDT1 = na.omit(train_setDT1)
+
+predsDT1 <- predict(DTmodel1, newdata = testDataDT1, type = "class")
+
+confusionMatrix(predsDT1,as.factor(testDataDT1$Binary))
+
+
+#Accuracy of DT2 (including experimental data)
+
+
+DT2<-read.table("Supp table 2.csv", header = TRUE, sep = ",")
+
+DTmodel2 <-rpart(Binary ~ Plant.species + Plant.mutant+ Plant.age..weeks. + Concentration..μm. + Pathogen.type 
++             +  Pathogen.lifestyle + Tissue, data= DT2, method = "class", minsplit = 25)
+
+fancyRpartPlot(DTmodel2,caption= NULL)
+
+#accuracy with our data included
+sample_splitDT2 <- sample.split(Y = DT2$Binary, SplitRatio = 0.75)
+train_setDT2 <- subset(x = DT2, sample_splitDT2 == TRUE)
+test_setDT2 <- subset(x = DT2, sample_splitDT2 == FALSE)
+testDataDT2 = na.omit(test_setDT2)
+trainingDataDT2 = na.omit(train_setDT2)
+predsDT2 <- predict(DTmodel2, newdata = testDataDT2, type = "class")
+confusionMatrix(predsDT2,as.factor(testDataDT2$Binary))
+
+
+
